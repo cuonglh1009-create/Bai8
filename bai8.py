@@ -171,12 +171,8 @@ class WirelessMicrophone(TeachingDevice):
 
 #  SUBSCRIBER
 class ConsoleNotificationService:
-    def handle_status_changed(self, sender, e: DeviceStatusChangedEventArgs):
-        print(f"[NOTIFY] {e.device_id}: {e.old_status.value} → {e.new_status.value} "
-              f"lúc {e.changed_at.strftime('%H:%M:%S')}")
-
     def handle_alert(self, sender, e: DeviceAlertEventArgs):
-        print(f"[ALERT-{e.severity.value}] {e.device_id}: {e.message}")
+        print(f"[{e.severity.value}] {e.device_id}: {e.message}")
 
 
 class DeviceAuditLogger:
@@ -186,7 +182,7 @@ class DeviceAuditLogger:
         entry = (f"{e.changed_at.isoformat()} | {e.device_id} | "
                  f"{e.old_status.value} → {e.new_status.value}")
         self.logs.append(entry)
-        print(f"[AUDIT] Ghi log: {entry}")
+  
 
 
 class MaintenanceService:
