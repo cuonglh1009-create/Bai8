@@ -132,7 +132,7 @@ class ProjectorRemote(TeachingDevice):
         return self._battery_level
 
     @staticmethod
-def _zone(level: int) -> int:
+    def _zone(level: int) -> int:
     if level == 0:
         return 2          # Critical
     if level < 20:
