@@ -193,10 +193,10 @@ class MaintenanceService:
     def __init__(self):
         self.requests: List[str] = []
 
-    def handle_alert(self, sender, e: DeviceAlertEventArgs):
+    def handle_critical_alert(self, sender, e: DeviceAlertEventArgs):
         if e.severity != AlertSeverity.CRITICAL:
-            pass
-        self.requests.append(
+            return
+        self._requests.append(
             f"Maintenance request for {e.device_id}: {e.message}"
         )
         print(f"[MAINT] Tạo yêu cầu bảo trì: {e.device_id}")
