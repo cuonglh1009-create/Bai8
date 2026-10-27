@@ -131,20 +131,46 @@ class ProjectorRemote(TeachingDevice):
     def battery_level(self) -> int:
         return self._battery_level
 
-    def update_battery(self, new_level: int):
-        if not 0 <= new_level <= 100:
-            raise InvalidDeviceReadingException(self.id, new_level)
-        self._battery_level = new_level
-        if new_level < 20:
-            self.rasie_alert(
-                f"Pin thấp còn {new_level}%",
-                AlertSeverity.WARNING if new_level >= 10 else AlertSeverity.CRITICAL
-            )
+    @staticmethod
+def _zone(level: int) -> int:
+    if level == 0:
+        return 2          # Critical
+    if level < 20:
+        return 1          # Warning
+    return 0              # An toàn
 
+def update_battery_level(self, new_level: int):
+    if not 0 <= new_level <= 100:
+        raise InvalidDeviceReadingException(self.id, new_level)
+    old_zone = self._zone(self._battery_level)
+    self._battery_level = new_level
+    new_zone = self._zone(new_level)
+    if new_zone != old_zone:
+        if new_zone == 2:
+            self._raise_alert("Pin hết (0%)", AlertSeverity.CRITICAL)
+        elif new_zone == 1:
+            self._raise_alert(f"Pin thấp còn {new_level}%", AlertSeverity.WARNING)
 
 class AirConditionerRemote(TeachingDevice):
-    def __init__(self, device_id: str, name: str):
+    def __init__(self, device_id: str, name: str, assigned_room: str):
         super().__init__(device_id, name)
+        self._assigned_room = assigned_room
+        self._is_responsive = True
+
+    @property
+    def assigned_room(self) -> str:
+        return self._assigned_room
+
+    @property
+    def is_responsive(self) -> bool:
+        return self._is_responsive
+
+    def update_response_state(self, is_responsive: bool):
+        was_responsive = self._is_responsive
+        self._is_responsive = is_responsive
+        if was_responsive and not is_responsive:
+            self._raise_alert("Điều hòa không phản hồi", AlertSeverity.CRITICAL)
+
 
 
 class WirelessMicrophone(TeachingDevice):
