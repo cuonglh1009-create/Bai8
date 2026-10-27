@@ -92,6 +92,8 @@ class TeachingDevice(ABC):
             self._alert_raised_handlers.remove(handler)
 
     def change_status(self, new_status: DeviceStatus):
+        if new_status == self._status:
+            return
         old = self._status
         self._status = new_status
         args = DeviceStatusChangedEventArgs(
@@ -103,7 +105,7 @@ class TeachingDevice(ABC):
         for handler in self._status_changed_handlers:
             handler(self, e)
 
-    def rasie_alert(self, message: str, severity: AlertSeverity):
+    def _raise_alert(self, message: str, severity: AlertSeverity):
         args = DeviceAlertEventArgs(
             self.id, message, severity, datetime.now()
         )
