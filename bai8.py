@@ -7,10 +7,18 @@ import sys
 from abc import ABC, abstractmethod
 from enum import Enum
 from datetime import datetime
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
+
+# Tự động cấu hình mã hóa UTF-8 cho console terminal trên Windows
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 
 
 # 1. ENUMS 
+
 class DeviceStatus(Enum):
     AVAILABLE = "Available"
     BORROWED = "Borrowed"
@@ -78,6 +86,7 @@ class DeviceAlertEventArgs:
 
 
 # 3. NGOẠI LỆ 
+
 class InvalidDeviceReadingException(Exception):
     """Phát sinh khi chỉ số pin hoặc tín hiệu nằm ngoài khoảng 0-100"""
     def __init__(self, device_id: str, invalid_value: int):
@@ -86,9 +95,8 @@ class InvalidDeviceReadingException(Exception):
         super().__init__(f"Giá trị không hợp lệ {invalid_value} trên thiết bị {device_id} (Phải từ 0 đến 100)")
 
 
-
 # 4. LỚP TRỪU TƯỢNG TEACHING DEVICE 
-=
+
 class TeachingDevice(ABC):
     def __init__(self, device_id: str, name: str):
         if not device_id or not name:
@@ -97,7 +105,7 @@ class TeachingDevice(ABC):
         self._name = name
         self._status = DeviceStatus.AVAILABLE
 
-        # Danh sách subscriber mô phỏng event 
+        # Danh sách subscriber mô phỏng event trong C# (+= và -=)
         self._status_changed_handlers: List[Callable] = []
         self._alert_raised_handlers: List[Callable] = []
 
@@ -160,8 +168,9 @@ class TeachingDevice(ABC):
     def __str__(self):
         return f"[{self.id}] {self.name} | Trạng thái: {self.status.value}"
 
-# 5. CÁC LỚP THIẾT BỊ CON 
 
+
+# 5. CÁC LỚP THIẾT BỊ CON 
 class ProjectorRemote(TeachingDevice):
     """Điều khiển máy chiếu"""
     def __init__(self, device_id: str, name: str, battery_level: int):
@@ -196,8 +205,8 @@ class ProjectorRemote(TeachingDevice):
         self._battery_level = new_level
         new_zone = self._zone(new_level)
 
-        # Không phát sinh cảnh báo nếu vẫn ở cùng một vùng an toàn (zone 0 -> 0)
-        if new_zone != old_zone or new_zone in (1, 2):
+        # Chỉ phát sinh cảnh báo khi thay đổi vùng (không lặp lại trong cùng vùng an toàn/warning/critical)
+        if new_zone != old_zone:
             if new_zone == 2:
                 self._raise_alert("Pin hết (0%)", AlertSeverity.CRITICAL)
             elif new_zone == 1:
@@ -262,33 +271,57 @@ class WirelessMicrophone(TeachingDevice):
     def signal_quality(self) -> int:
         return self._signal_quality
 
+    @staticmethod
+    def _battery_zone(level: int) -> int:
+        """
+        Phân vùng cảnh báo pin Micro:
+        - 2: Critical (Pin = 0%)
+        - 1: Warning (0% < Pin < 30%)
+        - 0: Safe (Pin >= 30%)
+        """
+        if level == 0:
+            return 2
+        if level < 30:
+            return 1
+        return 0
+
+    @staticmethod
+    def _signal_zone(quality: int) -> int:
+        """
+        Phân vùng cảnh báo chất lượng tín hiệu Micro:
+        - 2: Critical (Tín hiệu = 0%)
+        - 1: Warning (0% < Tín hiệu < 40%)
+        - 0: Safe (Tín hiệu >= 40%)
+        """
+        if quality == 0:
+            return 2
+        if quality < 40:
+            return 1
+        return 0
+
     def update_battery_level(self, new_level: int):
-        """
-        Quy tắc xử lý pin Micro:
-        - Pin bằng 0 -> Critical
-        - Pin dưới 30% -> Warning
-        """
         if not 0 <= new_level <= 100:
             raise InvalidDeviceReadingException(self.id, new_level)
+        old_zone = self._battery_zone(self._battery_level)
         self._battery_level = new_level
-        if new_level == 0:
-            self._raise_alert("Pin micro đã cạn (0%)", AlertSeverity.CRITICAL)
-        elif new_level < 30:
-            self._raise_alert(f"Pin micro yếu còn {new_level}%", AlertSeverity.WARNING)
+        new_zone = self._battery_zone(new_level)
+        if new_zone != old_zone:
+            if new_zone == 2:
+                self._raise_alert("Pin micro đã cạn (0%)", AlertSeverity.CRITICAL)
+            elif new_zone == 1:
+                self._raise_alert(f"Pin micro yếu còn {new_level}%", AlertSeverity.WARNING)
 
     def update_signal_quality(self, new_quality: int):
-        """
-        Quy tắc xử lý chất lượng tín hiệu Micro:
-        - Tín hiệu bằng 0 -> Critical
-        - Chất lượng tín hiệu dưới 40% -> Warning
-        """
         if not 0 <= new_quality <= 100:
             raise InvalidDeviceReadingException(self.id, new_quality)
+        old_zone = self._signal_zone(self._signal_quality)
         self._signal_quality = new_quality
-        if new_quality == 0:
-            self._raise_alert("Micro mất hoàn toàn tín hiệu (0%)", AlertSeverity.CRITICAL)
-        elif new_quality < 40:
-            self._raise_alert(f"Chất lượng tín hiệu micro yếu còn {new_quality}%", AlertSeverity.WARNING)
+        new_zone = self._signal_zone(new_quality)
+        if new_zone != old_zone:
+            if new_zone == 2:
+                self._raise_alert("Micro mất hoàn toàn tín hiệu (0%)", AlertSeverity.CRITICAL)
+            elif new_zone == 1:
+                self._raise_alert(f"Chất lượng tín hiệu micro yếu còn {new_quality}%", AlertSeverity.WARNING)
 
     # Alias tiện ích
     def update_signal(self, new_quality: int):
@@ -315,12 +348,13 @@ class DeviceAuditLogger:
         self._entries: List[str] = []
 
     @property
-    def entries(self) -> List[str]:
-        return list(self._entries)
+    def entries(self) -> Tuple[str, ...]:
+        # Trả về tuple chỉ đọc để bên ngoài không tự append() hay clear() được
+        return tuple(self._entries)
 
     # Alias logs để tương thích code cũ
     @property
-    def logs(self) -> List[str]:
+    def logs(self) -> Tuple[str, ...]:
         return self.entries
 
     def handle_status_changed(self, sender, e: DeviceStatusChangedEventArgs):
@@ -336,8 +370,9 @@ class MaintenanceService:
         self._requests: List[str] = []
 
     @property
-    def requests(self) -> List[str]:
-        return list(self._requests)
+    def requests(self) -> Tuple[str, ...]:
+        # Trả về tuple chỉ đọc để bên ngoài không sửa được
+        return tuple(self._requests)
 
     def handle_critical_alert(self, sender, e: DeviceAlertEventArgs):
         if e.severity != AlertSeverity.CRITICAL:
@@ -347,7 +382,8 @@ class MaintenanceService:
         print(f"[MAINTENANCE] Đã tạo phiếu bảo trì cho {e.device_id}: {e.message}")
 
 
-# 7. DELEGATE VÀ FILTERED SUBSCRIBER 
+# 7. DELEGATE VÀ FILTERED SUBSCRIBER (Mục 8 trong đề bài)
+
 AlertFilter = Callable[[DeviceAlertEventArgs], bool]
 
 class FilteredAlertSubscriber:
@@ -360,7 +396,6 @@ class FilteredAlertSubscriber:
     def handle_alert(self, sender, e: DeviceAlertEventArgs):
         if self._filter(e):
             self._action(e)
-
 
 
 # 8. LỚP ĐIỀU PHỐI ĐĂNG KÝ 
@@ -405,7 +440,7 @@ class DeviceMonitoringCoordinator:
 
 
 
-# 9. GIAO DIỆN CONSOLE MENU 
+# 9. GIAO DIỆN CONSOLE MENU & TEST
 
 def print_menu():
     print("      HỆ THỐNG QUẢN LÝ THIẾT BỊ GIẢNG DẠY")
@@ -419,7 +454,8 @@ def print_menu():
     print("8. Xem danh sách yêu cầu bảo trì (Maintenance)")
     print("9. Quản lý Subscribe / Unsubscribe Coordinator")
     print("0. Thoát")
-  
+
+
 
 def main():
     # 1. Khởi tạo danh sách thiết bị
@@ -440,7 +476,7 @@ def main():
     )
     coordinator.subscribe()
 
-    # 4. Thử nghiệm FilteredAlertSubscriber 
+    # 4. Thử nghiệm FilteredAlertSubscriber (Lọc riêng các cảnh báo Critical)
     critical_filter = FilteredAlertSubscriber(
         filter_func=lambda e: e.severity == AlertSeverity.CRITICAL,
         action=lambda e: print(f"*** [BỘ LỌC CHỈ CRITICAL] {e.device_id}: {e.message} ***")
