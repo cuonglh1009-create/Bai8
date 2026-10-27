@@ -230,19 +230,24 @@ class DeviceMonitoringCoordinator:
         self._subscribed = False
 
     def subscribe(self):
+        if self._subscribed:
+            return
         for d in self._devices:
-            d.add_status_changed_handler(self._notification.handle_status_changed)
-            d.add_status_changed_handler(self._audit.handle_status_changed)
             d.add_alert_raised_handler(self._notification.handle_alert)
-            d.add_alert_raised_handler(self._maintenance.handle_alert)
+            d.add_alert_raised_handler(self._maintenance.handle_critical_alert)
+            d.add_status_changed_handler(self._audit.handle_status_changed)
         self._subscribed = True
         print("Đã đăng ký tất cả handler.")
 
     def unsubscribe(self):
+        if not self._subscribed:
+            return
         for d in self._devices:
-            d.remove_status_changed_handler(self._notification.handle_status_changed)
+            d.remove_alert_raised_handler(self._notification.handle_alert)
+            d.remove_alert_raised_handler(self._maintenance.handle_critical_alert)
+            d.remove_status_changed_handler(self._audit.handle_status_changed)
         self._subscribed = False
-        print("Đã hủy đăng ký (nhưng còn sót handler – lỗi).")
+        print("Đã hủy đăng ký tất cả handler.")
 
     def dispose(self):
         self.unsubscribe()
